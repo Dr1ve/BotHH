@@ -1152,6 +1152,36 @@ void Bot::zeppelin()
 			}
 		}
 
+		expeditions.clear();
+		//Запрашиваю информацию о экспедициях еще раз.
+		data = "{\"calls\":[{\"name\":\"expeditionGet\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
+		if (sendapi(data))
+		{
+			//Блок с информацией о экспедициях
+			std::stringstream ss(m_html);
+			pt::ptree root;
+			pt::read_json(ss, root);
+			for (pt::ptree::value_type &row : root.get_child("results..result.response"))
+			{
+				expedition e;
+				e.id = std::stoi(row.second.get_child("id").data());
+				e.slotId = std::stoi(row.second.get_child("slotId").data());
+				e.status = std::stoi(row.second.get_child("status").data());
+				e.endTime = std::stoi(row.second.get_child("endTime").data());
+				e.duration = std::stoi(row.second.get_child("duration").data());
+				e.power = std::stoi(row.second.get_child("power").data());
+				e.rarity = std::stoi(row.second.get_child("rarity").data());
+				e.storyId = std::stoi(row.second.get_child("storyId").data());
+
+				for (pt::ptree::value_type &r : row.second.get_child("heroes"))
+				{
+					e.heroes.push_back(std::stoi(r.second.data()));
+				}
+
+				expeditions.push_back(e);
+			}
+		}
+
 		//список героев которые доступны для отправки в экспедицию
 		std::vector<Hero> h(m_datagame->get_heroes());
 		list.clear();
