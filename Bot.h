@@ -23,15 +23,18 @@ public:
 
 	void setHeaderGame(std::string datasend);
 
+	void Connection();
+
 	void Loop();
 
 private:
-	bool sendapi(std::string data);
+	bool sendapi(std::string data, int reconnect = 1);
 
 	void tower();
 	void dungeon();
 	void chestboss();
 	void zeppelin();
+	void getEnergy();
 
 	void recursive(int, unsigned int, int, int);
 	std::vector<int> currentTeam;

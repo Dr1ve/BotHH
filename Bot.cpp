@@ -214,13 +214,10 @@ void Bot::setHeaderGame(std::string datasend)
 
 }
 
-void Bot::Loop()
+void Bot::Connection()
 {
-	bool b_exit = false;
-	wchar_t sim = 0;
-
-	system("cls");
-	//перед циклом считываем данные для игры
+	Request_Id = 0;
+	//считываем данные для игры
 	writedatagame();
 
 	//попытка отправки первого запроса
@@ -229,7 +226,8 @@ void Bot::Loop()
 	{
 		std::cout << std::to_string(Request_Id) + " - запрос обработался\n";
 		//std::cout << "\n\nОтвет:" << m_html << std::endl;
-	} else {
+	}
+	else {
 		std::cout << "Запрос не обработался: " << std::endl;
 		std::cout << "\n\nЗапрос:" << data << std::endl;
 		std::cout << "\n\nОтвет:" << m_html << std::endl;
@@ -295,7 +293,7 @@ void Bot::Loop()
 		for (pt::ptree::value_type &r : root.get_child("results"))
 		{
 			std::string ident = r.second.get_child("ident").data();
-			
+
 			if (ident == "userGetInfo")
 			{
 				m_datagame->set_player_id(r.second.get_child("result.response.id").data());
@@ -324,12 +322,25 @@ void Bot::Loop()
 			}
 
 		}
-	} else {
+	}
+	else {
 		std::cout << "Запрос не обработался: " << std::endl;
 		std::cout << "\n\nЗапрос:" << data << std::endl;
 		std::cout << "\n\nОтвет:" << m_html << std::endl;
 	}
+}
+
+void Bot::Loop()
+{
+	bool b_exit = false;
+	wchar_t sim = 0;
+
+	system("cls");
+
+	Connection();
 	
+	std::string data;
+
 	bool paint = true;
 	while (!b_exit)
 	{
@@ -348,6 +359,7 @@ void Bot::Loop()
 			std::cout << "3 - пройти подземелье (в разработке)\n";
 			std::cout << "4 - сбор добычи Боссов Запределья\n";
 			std::cout << "5 - дирижабль\n";
+			std::cout << "6 - запустить автосбор выполненных заданий\n";
 			std::cout << "ESC Выход\n";
 
 			paint = false;
@@ -395,6 +407,10 @@ void Bot::Loop()
 				zeppelin();//дирижабль
 				paint = true;
 				break;
+			case L'6':
+				getEnergy();//собираю энергию
+				paint = true;
+				break;
 			case 27://Если нажали ESC выходим из цикла
 				b_exit = true;
 				break;
@@ -403,7 +419,78 @@ void Bot::Loop()
 	}
 }
 
-bool Bot::sendapi(std::string data)
+void Bot::getEnergy()
+{
+	std::string text = "Идет сбор наград выполненных заданий\n";
+	while (true)
+	{
+		system("cls");
+		std::cout << text << std::endl << std::endl;
+		std::cout << "Нажмите ESC чтоб завершить сбор\n";
+
+		if (_kbhit())
+		{
+			wchar_t sim = _getwch();
+			switch (sim)
+			{
+			case 27://если нажали ESC завершаем сбор
+				return;
+				break;
+			}
+		}
+		else
+		{
+			//делаю паузу на 10 сек
+			Sleep(10000);
+			//отправляю запрос на получение информации по квестам
+			std::string data = "{\"calls\":[{\"name\":\"questGetAll\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
+			if (sendapi(data))
+			{
+				struct quest
+				{
+					std::string id;
+					std::string state;
+					std::string progress;
+					//reward
+				};
+				std::vector<quest> quests;
+				//парсю полученный ответ
+				std::stringstream ss(m_html);
+				pt::ptree root;
+				pt::read_json(ss, root);
+				for (pt::ptree::value_type &r : root.get_child("results..result.response"))
+				{
+					quest q;
+					//записываю только те которые можно собрать (state=2)
+					if ((q.state = r.second.get_child("state").data()) == "2")
+					{
+						q.id = r.second.get_child("id").data();
+						q.progress = r.second.get_child("progress").data();
+
+						quests.push_back(q);
+					}					
+				}
+				//если массив не пустой то отправляю запросы на сбор выполненных заданий
+				for (size_t i = 0; i < quests.size(); ++i)
+				{
+					data = "{\"calls\":[{\"name\":\"questFarm\",\"ident\":\"body\",\"args\":{\"questId\":" + quests[i].id + "}}],\"session\":null}";
+					if (sendapi(data))
+						text += "собрал награду с задания " + quests[i].id + "\n";
+				}
+			}
+			else {
+				//Проверяю если Invalid signature то делаю переподключение
+				std::cout << "Запрос не обработался" << std::endl;
+				std::cout << "\n\nЗапрос:" << data << std::endl;
+				std::cout << "\n\nОтвет:" << m_html << std::endl;
+				system("pause");
+				return;
+			}
+		}
+	}
+}
+
+bool Bot::sendapi(std::string data, int reconnect)
 {
 	m_network->CloseConnection();
 	m_network->OpenConnection("heroes-vk.nextersglobal.com");
@@ -416,11 +503,29 @@ bool Bot::sendapi(std::string data)
 		return false;
 	}
 	//Проверяю полученный ответ, если есть фигурная скобка значит пришел json ответ, значит все впорядке
-	//Если в ответе пришело слово error то запрос не прошел
+	//Если в ответе пришло слово error то запрос не прошел
 	if ((m_html.find("{") != std::string::npos) && (m_html.find("error") == std::string::npos))
 		return true;
 	else
-		return false;
+	{
+		//Если пришло слова Invalid signature то пытаюсь переподключиться
+		if (m_html == "Invalid signature")
+		{
+			if (reconnect == 0)
+			{
+				return false;
+			}
+			else
+			{
+				Connection();
+				return sendapi(data, reconnect - 1);
+			}			
+		}
+		else
+		{
+			return false;
+		}
+	}
 }
 
 void Bot::tower()
