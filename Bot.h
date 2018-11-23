@@ -28,7 +28,7 @@ public:
 	void Loop();
 
 private:
-	bool sendapi(std::string data, int reconnect = 1);
+	bool sendapi(std::string data, int reconnect = 20);
 
 	void tower();
 	void dungeon();

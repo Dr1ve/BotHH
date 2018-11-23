@@ -150,8 +150,12 @@ std::string HttpReader::GetData()
 
 	do {
 		bRead = InternetReadFile(m_hRequest, (LPSTR)cBuffer, sizeof(cBuffer) - 1, &dwBytesRead);
-		cBuffer[dwBytesRead] = 0;
-		source += cBuffer;
+		// Ќе знаю как так получилось но вылетела ошибка выхода за предел массива
+		if (dwBytesRead < 1024)
+		{
+			cBuffer[dwBytesRead] = 0;
+			source += cBuffer;
+		}
 	} while (bRead && (dwBytesRead != 0));
 
 	return source;

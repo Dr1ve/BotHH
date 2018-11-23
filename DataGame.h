@@ -64,6 +64,7 @@ public:
 	std::string get_network_ident() { return network_ident; }
 	void set_heroes(Hero *h) { heroes.push_back(*h); }
 	std::vector<Hero> get_heroes() { return heroes; }
+	void clearHeroes() { heroes.clear(); }
 
 private:
 	std::string UserId;

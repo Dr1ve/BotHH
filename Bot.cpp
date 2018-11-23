@@ -1,5 +1,7 @@
 #include "Bot.h"
 
+#include <ctime>
+
 std::string strPad(std::string p1, int p2, std::string p3)
 {
 	while (p1.length() < (size_t)p2)
@@ -287,6 +289,9 @@ void Bot::Connection()
 		std::cout << std::to_string(Request_Id) + " - запрос обработался\n";
 		//std::cout << "\n\nОтвет:" << m_html << std::endl;
 
+		// Очищаю массив героев
+		m_datagame->clearHeroes();
+
 		std::stringstream ss(m_html);
 		pt::ptree root;
 		pt::read_json(ss, root);
@@ -422,11 +427,20 @@ void Bot::Loop()
 void Bot::getEnergy()
 {
 	std::string text = "Идет сбор наград выполненных заданий\n";
+	unsigned int interval = 5 * 1000; // 5 сек
+	clock_t timer = clock() - interval; // отнимаем 5 сек чтоб первый соб был сразу
+	// Перерисовываю только когда есть изменение, чтоб не мерцал текст
+	bool draw = true; // перерисовать текст
 	while (true)
 	{
-		system("cls");
-		std::cout << text << std::endl << std::endl;
-		std::cout << "Нажмите ESC чтоб завершить сбор\n";
+		if (draw)
+		{
+			system("cls");
+			std::cout << text << std::endl << std::endl;
+			std::cout << "Нажмите ESC чтоб завершить сбор\n";
+			draw = false;
+		}
+		
 
 		if (_kbhit())
 		{
@@ -440,51 +454,56 @@ void Bot::getEnergy()
 		}
 		else
 		{
-			//делаю паузу на 10 сек
-			Sleep(10000);
-			//отправляю запрос на получение информации по квестам
-			std::string data = "{\"calls\":[{\"name\":\"questGetAll\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
-			if (sendapi(data))
+			if ((clock() - timer) > interval)
 			{
-				struct quest
+				timer = clock();
+				//отправляю запрос на получение информации по квестам
+				std::string data = "{\"calls\":[{\"name\":\"questGetAll\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
+				if (sendapi(data))
 				{
-					std::string id;
-					std::string state;
-					std::string progress;
-					//reward
-				};
-				std::vector<quest> quests;
-				//парсю полученный ответ
-				std::stringstream ss(m_html);
-				pt::ptree root;
-				pt::read_json(ss, root);
-				for (pt::ptree::value_type &r : root.get_child("results..result.response"))
-				{
-					quest q;
-					//записываю только те которые можно собрать (state=2)
-					if ((q.state = r.second.get_child("state").data()) == "2")
+					struct quest
 					{
-						q.id = r.second.get_child("id").data();
-						q.progress = r.second.get_child("progress").data();
+						std::string id;
+						std::string state;
+						std::string progress;
+						//reward
+					};
+					std::vector<quest> quests;
+					//парсю полученный ответ
+					std::stringstream ss(m_html);
+					pt::ptree root;
+					pt::read_json(ss, root);
+					for (pt::ptree::value_type &r : root.get_child("results..result.response"))
+					{
+						quest q;
+						//записываю только те которые можно собрать (state=2)
+						if ((q.state = r.second.get_child("state").data()) == "2")
+						{
+							q.id = r.second.get_child("id").data();
+							q.progress = r.second.get_child("progress").data();
 
-						quests.push_back(q);
-					}					
+							quests.push_back(q);
+						}
+					}
+					//если массив не пустой то отправляю запросы на сбор выполненных заданий
+					for (size_t i = 0; i < quests.size(); ++i)
+					{
+						data = "{\"calls\":[{\"name\":\"questFarm\",\"ident\":\"body\",\"args\":{\"questId\":" + quests[i].id + "}}],\"session\":null}";
+						if (sendapi(data))
+						{
+							text += "собрал награду с задания " + quests[i].id + "\n";
+							draw = true;
+						}
+					}
 				}
-				//если массив не пустой то отправляю запросы на сбор выполненных заданий
-				for (size_t i = 0; i < quests.size(); ++i)
-				{
-					data = "{\"calls\":[{\"name\":\"questFarm\",\"ident\":\"body\",\"args\":{\"questId\":" + quests[i].id + "}}],\"session\":null}";
-					if (sendapi(data))
-						text += "собрал награду с задания " + quests[i].id + "\n";
+				else {
+					//Проверяю если Invalid signature то делаю переподключение
+					std::cout << "Запрос не обработался" << std::endl;
+					std::cout << "\n\nЗапрос:" << data << std::endl;
+					std::cout << "\n\nОтвет:" << m_html << std::endl;
+					system("pause");
+					return;
 				}
-			}
-			else {
-				//Проверяю если Invalid signature то делаю переподключение
-				std::cout << "Запрос не обработался" << std::endl;
-				std::cout << "\n\nЗапрос:" << data << std::endl;
-				std::cout << "\n\nОтвет:" << m_html << std::endl;
-				system("pause");
-				return;
 			}
 		}
 	}
@@ -517,6 +536,9 @@ bool Bot::sendapi(std::string data, int reconnect)
 			}
 			else
 			{
+				// Жду 5 секунд и пытаюсь переподключиться
+				Sleep(5000);
+
 				Connection();
 				return sendapi(data, reconnect - 1);
 			}			
@@ -772,7 +794,7 @@ void Bot::tower()
 						data = "{\"calls\":[{\"name\":\"towerBuyBuff\",\"ident\":\"body\",\"args\":{\"buffId\":" + v[i] + "}}],\"session\":null}";
 						if (sendapi(data))
 						{
-							std::cout << "Купил баф\n";
+							std::cout << "Купил баф " << arrbuff[num].name << std::endl;
 							//отнимаем от доступных черепов количество потраченных черепов
 							coinSkull = coinSkull - arrbuff[num].cost;
 						}
@@ -807,7 +829,7 @@ void Bot::tower()
 							data = "{\"calls\":[{\"name\":\"towerBuyBuff\",\"ident\":\"body\",\"args\":{\"buffId\":" + v[i] + "}}],\"session\":null}";
 							if (sendapi(data))
 							{
-								std::cout << "Купил баф\n";
+								std::cout << "Купил баф " << arrbuff[num].name << std::endl;
 								//отнимаем от доступных черепов количество потраченных черепов
 								coinSkull = coinSkull - arrbuff[num].cost;
 							}
@@ -1296,11 +1318,14 @@ void Bot::zeppelin()
 			bool isAvailable = true;
 			for (size_t i = 0; i < expeditions.size(); ++i)
 			{
-				for (size_t j = 0; j < expeditions[i].heroes.size(); ++j)
+				if (expeditions[i].status == 2)
 				{
-					if (expeditions[i].heroes[j] == std::stoi((*it).get_id()))
-						isAvailable = false;
-				}
+					for (size_t j = 0; j < expeditions[i].heroes.size(); ++j)
+					{
+						if (expeditions[i].heroes[j] == std::stoi((*it).get_id()))
+							isAvailable = false;
+					}
+				}				
 			}
 
 			//если герой не учавствует ни в какой экспедиции то он свободный(доступный)
@@ -1330,6 +1355,7 @@ void Bot::zeppelin()
 				currentTeam.resize(5, 0);
 				minPowerTeam.resize(5, 0);
 				power = expeditions[i].power;
+				minPower = INT_MAX;
 
 				recursive(0, 0, 0, list.size());
 				//если собрали команду то отпраляем ее на экспедицию
@@ -1370,6 +1396,7 @@ void Bot::zeppelin()
 					std::cout << "Запрос не обработался" << std::endl;
 					std::cout << "\n\nЗапрос:\n" << data << std::endl;
 					std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+					std::copy(minPowerTeam.begin(), minPowerTeam.end(), std::ostream_iterator<int>(std::cout, " "));
 					system("pause");
 					//если ошибка то выходим из функции
 					return;
