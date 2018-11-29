@@ -1,13 +1,11 @@
 #ifndef HERO_H
 #define HERO_H
 
-#include "includes.h"
+#include <iostream>
 
 class Hero
 {
 public:
-	Hero();
-
 	void set_id(std::string id);
 	void set_xp(std::string xp);
 	void set_level(std::string level);
@@ -19,18 +17,16 @@ public:
 	void set_titanGiftLevel(std::string titanGiftLevel);
 	void set_scale(std::string scale);
 
-	std::string get_id() { return id; }
-	std::string get_xp() { return xp; }
-	std::string get_level() { return level; }
-	std::string get_color() { return color; }
-	std::string get_power() { return power; }
-	std::string get_star() { return star; }
-	std::string get_skins() { return skins; }
-	std::string get_currentSkin() { return currentSkin; }
-	std::string get_titanGiftLevel() { return titanGiftLevel; }
-	std::string get_scale() { return scale; }
-
-	~Hero();
+	std::string get_id();
+	std::string get_xp();
+	std::string get_level();
+	std::string get_color();
+	std::string get_power();
+	std::string get_star();
+	std::string get_skins();
+	std::string get_currentSkin();
+	std::string get_titanGiftLevel();
+	std::string get_scale();
 
 private:
 	std::string id;

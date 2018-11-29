@@ -2,10 +2,12 @@
 #ifndef BOT_H
 #define BOT_H
 
-#include "includes.h"
+#include <string>
+#include <vector>
 
+class Hero;
 class DataGame;
-class HttpReader;
+class ConnectionGame;
 
 struct ConfigBot {
 	bool freeChest;
@@ -14,22 +16,12 @@ struct ConfigBot {
 class Bot
 {
 public:
-	Bot(DataGame *datagame);
+	Bot();
 	~Bot();
-
-	void set_datagame(DataGame *datagame) { m_datagame = datagame; }
-
-	void writedatagame();
-
-	void setHeaderGame(std::string datasend);
-
-	void Connection();
 
 	void Loop();
 
 private:
-	bool sendapi(std::string data, int reconnect = 20);
-
 	void tower();
 	void dungeon();
 	void chestboss();
@@ -45,11 +37,9 @@ private:
 	unsigned int maxPowerHero = 0;
 
 	DataGame * m_datagame;
-	HttpReader * m_network;
-	std::string m_html;
-	unsigned int Request_Id;
 	ConfigBot m_configbot;
 	std::string lastevent;
+	ConnectionGame *m_connect;
 };
 
 #endif // !BOT_H

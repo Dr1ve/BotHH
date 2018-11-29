@@ -1,8 +1,13 @@
 #include "HttpReader.h"
 
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+
+namespace pt = boost::property_tree;
+
 #pragma comment (lib, "Wininet.lib")
 
-HttpReader::HttpReader(std::string ServerName, bool bUseSSL)
+HttpReader::HttpReader(const std::string &ServerName, bool bUseSSL)
 	: m_hInternet(NULL), 
 	m_hConnection(NULL), 
 	m_hRequest(NULL), 
@@ -161,7 +166,7 @@ std::string HttpReader::GetData()
 	return source;
 }
 
-std::string HttpReader::getParam(std::string html, std::string name, std::string leftsymbol, std::string rightsymbol)
+std::string HttpReader::getParam(const std::string &html, const std::string &name, const std::string &leftsymbol, std::string rightsymbol)
 {
 	/*проверка на существование параметра*/
 	if (html.find(name) == -1)
@@ -181,7 +186,7 @@ std::string HttpReader::getParam(std::string html, std::string name, std::string
 	return html.substr(first, last);
 }
 
-std::string HttpReader::getVal(std::string json, std::string path, std::string def)
+std::string HttpReader::getVal(const std::string &json, const std::string &path, const std::string &def)
 {
 	std::stringstream ss(json);
 	pt::ptree root;

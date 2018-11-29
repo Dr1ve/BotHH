@@ -1,338 +1,31 @@
 #include "Bot.h"
 
+#include "HttpReader.h"
+#include "DataGame.h"
+#include "ConnectionGame.h"
 #include <ctime>
+#include <conio.h>
+#include <map>
+#include <chrono>
 
-std::string strPad(std::string p1, int p2, std::string p3)
-{
-	while (p1.length() < (size_t)p2)
-		p1 = p3 + p1;
-	return p1;
-}
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
-std::string createSessionId()
-{
-	srand((unsigned int)time(NULL));
-	unsigned int unix_epoch = (unsigned int)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-	unix_epoch = (unsigned int)floor(unix_epoch);
-	unsigned int rand_num = (unsigned int)(rand() * 4.294967295E9);
-	unix_epoch &= static_cast<unsigned int>(4.294967295E9);
-	char buf[10];
-	_itoa_s(unix_epoch, &buf[0], sizeof(buf), 36);
-	std::string l1(buf);
-	_itoa_s(rand_num, &buf[0], sizeof(buf), 36);
-	std::string l2(buf);
+namespace pt = boost::property_tree;
 
-	return strPad(l1, 7, "0") + strPad(l2, 7, "0");
-}
-
-Bot::Bot(DataGame *datagame)
-	: Request_Id(0)
+Bot::Bot()
 {
 	m_configbot.freeChest = false;
 
-	m_datagame = datagame;
-	m_network = new HttpReader("vk.com", true);
-
-	m_datagame->set_session_id(createSessionId());
-	m_datagame->set_library_version("1");
-	//Пока что не знаю от куда вытягивать player_id, свой ид я знаю так что пока что заполню константно
-	//m_datagame->set_player_id("2762012");
-	m_datagame->set_network_ident("vkontakte");
+	m_datagame = new DataGame;
+	// Присоединяемся к игре
+	m_connect = new ConnectionGame(m_datagame);
 }
 
 Bot::~Bot()
 {
-	if (m_network)
-		delete m_network;
-}
-
-void showcache()
-{
-	BOOL bDone = FALSE;
-	HANDLE hCacheDir = NULL;
-	LPINTERNET_CACHE_ENTRY_INFO lpCacheEntry = NULL;
-	DWORD dwTrySize, dwEntrySize = 4096;
-	delete[] lpCacheEntry;
-	lpCacheEntry = (LPINTERNET_CACHE_ENTRY_INFO) new char[dwEntrySize];
-	lpCacheEntry->dwStructSize = dwEntrySize;
-	dwTrySize = dwEntrySize;
-	do
-	{
-		BOOL bSuccess;
-		if (hCacheDir == NULL)
-			bSuccess = (hCacheDir = FindFirstUrlCacheEntry(NULL, lpCacheEntry, &dwTrySize)) != NULL;
-		else
-			bSuccess = FindNextUrlCacheEntry(hCacheDir, lpCacheEntry, &dwTrySize);
-
-		if (!bSuccess)
-			bDone = TRUE;
-	} while (!bDone);
-}
-
-void Bot::writedatagame()
-{
-	//запрос для получения данных
-	std::string a = m_datagame->getUserId();
-	std::string param = "/al_profile.php?";
-	param += "__query=app5327745_" + m_datagame->getUserId();
-	param += "&_ref=left_nav";
-	param += "&al=-1";
-	param += "&al_id=" + m_datagame->getUserId();
-	param += "&ref=1";
-
-	m_network->CloseConnection();
-	m_network->OpenConnection("vk.com");
-	if (m_network->Get(param))
-	{
-		m_network->Send();
-		m_html = m_network->GetData();
-	}
-
-	//Вытягиваю api_url
-	std::string tmp = m_network->getParam(m_html, "\\\"api_url\\\"", "\\\"", "\\\"");
-	std::string::iterator it = std::remove(tmp.begin(), tmp.end(), '\\');
-	tmp.erase(it, tmp.end());
-	m_datagame->set_api_url(tmp);
-	//Вытягиваю api_id ид приложения
-	m_datagame->set_api_id(m_network->getParam(m_html, "\\\"api_id\\\"", ":", ","));
-	//Вытягиваю api_settings
-	m_datagame->set_api_settings(m_network->getParam(m_html, "\\\"api_settings\\\"", ":", ","));
-	//Вытягиваю viewer_type
-	m_datagame->set_viewer_type(m_network->getParam(m_html, "\\\"viewer_type\\\"", ":", ","));
-	//Вытягиваю sid
-	m_datagame->set_sid(m_network->getParam(m_html, "\\\"sid\\\"", "\\\"", "\\\""));
-	//Вытягиваю secret
-	m_datagame->set_secret(m_network->getParam(m_html, "\\\"secret\\\"", "\\\"", "\\\""));
-	//Вытягиваю access_token
-	m_datagame->set_access_token(m_network->getParam(m_html, "\\\"access_token\\\"", "\\\"", "\\\""));
-	//Вытягиваю group_id
-	m_datagame->set_group_id(m_network->getParam(m_html, "\\\"group_id\\\"", ":", ","));
-	//Вытягиваю is_app_user
-	m_datagame->set_is_app_user(m_network->getParam(m_html, "\\\"is_app_user\\\"", ":", ","));
-	//Вытягиваю auth_key
-	m_datagame->set_auth_key(m_network->getParam(m_html, "\\\"auth_key\\\"", "\\\"", "\\\""));
-	//Вытягиваю language
-	m_datagame->set_language(m_network->getParam(m_html, "\\\"language\\\"", ":", ","));
-	//Вытягиваю parent_language
-	m_datagame->set_parent_language(m_network->getParam(m_html, "\\\"parent_language\\\"", ":", ","));
-	//Вытягиваю ad_info
-	m_datagame->set_ad_info(m_network->getParam(m_html, "\\\"ad_info\\\"", "\\\"", "\\\""));
-	//Вытягиваю is_secure
-	m_datagame->set_is_secure(m_network->getParam(m_html, "\\\"is_secure\\\"", ":", ","));
-	//Вытягиваю stats_hash
-	m_datagame->set_stats_hash(m_network->getParam(m_html, "\\\"stats_hash\\\"", "\\\"", "\\\""));
-	//Вытягиваю ads_app_id
-	m_datagame->set_ads_app_id(m_network->getParam(m_html, "\\\"ads_app_id\\\"", "\\\"", "\\\""));
-	//Вытягиваю referrer
-	m_datagame->set_referrer(m_network->getParam(m_html, "\\\"referrer\\\"", "\\\"", "\\\""));
-	//Вытягиваю lc_name
-	m_datagame->set_lc_name(m_network->getParam(m_html, "\\\"lc_name\\\"", "\\\"", "\\\""));
-	//Вытягиваю hash
-	m_datagame->set_hash("");
-
-	//Вытягиваю auth_key для шапки пакетов игры
-	m_network->CloseConnection();
-	std::string url = "/iframe/vkontakte/iframe.new.php?";
-	url += "api_url=" + m_datagame->get_api_url();
-	url += "&api_id=" + m_datagame->get_api_id();
-	url += "&api_settings=" + m_datagame->get_api_settings();
-	url += "&viewer_id=" + m_datagame->getUserId();
-	url += "&viewer_type=" + m_datagame->get_viewer_type();
-	url += "&sid=" + m_datagame->get_sid();
-	url += "&secret=" + m_datagame->get_secret();
-	url += "&access_token=" + m_datagame->get_access_token();
-	url += "&user_id=" + m_datagame->getUserId();
-	url += "&group_id=" + m_datagame->get_group_id();
-	url += "&is_app_user=" + m_datagame->get_is_app_user();
-	url += "&auth_key=" + m_datagame->get_auth_key();
-	url += "&language=" + m_datagame->get_language();
-	url += "&parent_language=" + m_datagame->get_parent_language();
-	url += "&is_secure=" + m_datagame->get_is_secure();
-	url += "&stats_hash=" + m_datagame->get_stats_hash();
-	url += "&ads_app_id=" + m_datagame->get_ads_app_id();
-	url += "&referrer=" + m_datagame->get_referrer();
-	url += "&lc_name=" + m_datagame->get_lc_name();
-	url += "&hash=" + m_datagame->get_hash();
-
-	//showcache();
-
-	m_network->OpenConnection("i-heroes-vk.nextersglobal.com");
-	if (m_network->Get(url))
-	{
-		m_network->Send();
-		m_html = m_network->GetData();
-	}
-	m_datagame->set_auth_key(m_network->getParam(m_html, "auth_key", "=", "&"));
-	
-
-}
-
-void Bot::setHeaderGame(std::string datasend)
-{
-	Request_Id++;
-	std::string source = std::to_string(Request_Id);
-	source += ":" + m_datagame->get_auth_key();
-	source += ":" + m_datagame->get_session_id();
-	source += ":" + datasend;
-	/*надо собирать все атрибуты начинающиеся на X-Env потом сортировать их по алфавиту и дописывать в конец.
-	  Например в пакете присутствует 
-	  X-Env-Referrer: menu
-	  X-Env-Library-Version: 1
-	  отсекается X-Env и сортируется и в верхний регист переводится
-	  и записывается в итоге :LIBRARY-VERSION=1REFERRER=menu
-	  
-	  Но я чтоб не заморачиваться только одно значени буду отправлять если пакет будет ругаться 
-	  буду пробовать с несколькими значениями*/
-	source += ":LIBRARY-VERSION=" + m_datagame->get_library_version();
-
-	//X-Auth-Signature
-	std::string signature = "";
-	signature = md5(source);
-
-	//X-Auth-Signature-Key
-	/*этого атрибута нету*/
-
-	m_network->AddRequestHeader("X-Auth-User-Id: " + m_datagame->getUserId());
-	if (!m_datagame->get_player_id().empty())
-		m_network->AddRequestHeader("X-Auth-Player-Id: " + m_datagame->get_player_id());
-	//m_network->AddRequestHeader("X-Env-Referrer: menu");
-	m_network->AddRequestHeader("X-Auth-Network-Ident: vkontakte");
-	m_network->AddRequestHeader("X-Auth-Token: " + m_datagame->get_auth_key());
-	m_network->AddRequestHeader("X-Env-Library-Version: " + m_datagame->get_library_version());
-	m_network->AddRequestHeader("X-Requested-With: ShockwaveFlash/30.0.0.113");
-	m_network->AddRequestHeader("X-Request-Id: " + std::to_string(Request_Id));
-	m_network->AddRequestHeader("X-Auth-Signature: " + signature);
-	m_network->AddRequestHeader("X-Server-Time: 0");
-	m_network->AddRequestHeader("X-Auth-Session-Id: " + m_datagame->get_session_id());
-	m_network->AddRequestHeader("X-Auth-Session-Key: \"\"");
-	m_network->AddRequestHeader("X-Auth-Application-Id: " + m_datagame->get_api_id());
-	m_network->AddRequestHeader("Origin: https://heroes.cdnvideo.ru");
-	if (Request_Id == 1)
-	{
-		m_network->AddRequestHeader("X-Auth-Session-Init: 1");
-	}
-
-	//std::cout << md5(":LIBRARY-VERSION=1REFERRER=menu") << std::endl;
-
-}
-
-void Bot::Connection()
-{
-	Request_Id = 0;
-	//считываем данные для игры
-	writedatagame();
-
-	//попытка отправки первого запроса
-	std::string data = "{\"calls\":[{\"ident\":\"body\",\"name\":\"userMergeGetStatus\",\"args\":{}},{\"ident\":\"getTime\",\"name\":\"getTime\",\"args\":{}}],\"session\":null}";
-	if (sendapi(data))
-	{
-		std::cout << std::to_string(Request_Id) + " - запрос обработался\n";
-		//std::cout << "\n\nОтвет:" << m_html << std::endl;
-	}
-	else {
-		std::cout << "Запрос не обработался: " << std::endl;
-		std::cout << "\n\nЗапрос:" << data << std::endl;
-		std::cout << "\n\nОтвет:" << m_html << std::endl;
-	}
-	//запрос инфы
-	data = "{\"calls\":[";
-	//инфа об аккаунте
-	data += "{\"name\":\"userGetInfo\",\"ident\":\"userGetInfo\",\"args\":{}}";
-	//хз что за инфа
-	data += ",{\"name\":\"offerVk\",\"ident\":\"offerVk\",\"args\":{\"vk_sid\":null,\"vk_hash\":null,\"vk_lead_id\":null,\"vk_uid\":null}}";
-	//как я понял общая инфа
-	data += ",{\"name\":\"billingGetAll\",\"ident\":\"billingGetAll\",\"args\":{}}";
-	//информацию об инвентаре
-	data += ",{\"name\":\"inventoryGet\",\"ident\":\"inventoryGet\",\"args\":{}}";
-	//информация об героях
-	data += ",{\"name\":\"heroGetAll\",\"ident\":\"heroGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"titanGetAll\",\"ident\":\"titanGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"titanSpiritGetAll\",\"ident\":\"titanSpiritGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"missionGetAll\",\"ident\":\"missionGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"missionGetReplace\",\"ident\":\"missionGetReplace\",\"args\":{}}";
-	data += ",{\"name\":\"dailyBonusGetInfo\",\"ident\":\"dailyBonusGetInfo\",\"args\":{}}";
-	data += ",{\"name\":\"getTime\",\"ident\":\"getTime\",\"args\":{}}";
-	data += ",{\"name\":\"teamGetAll\",\"ident\":\"teamGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"questGetAll\",\"ident\":\"questGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"questGetEvents\",\"ident\":\"questGetEvents\",\"args\":{}}";
-	data += ",{\"name\":\"mailGetAll\",\"ident\":\"mailGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"arenaGetAll\",\"ident\":\"arenaGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"socialQuestGetInfo\",\"ident\":\"socialQuestGetInfo\",\"args\":{}}";
-	data += ",{\"name\":\"userGetAvailableAvatars\",\"ident\":\"userGetAvailableAvatars\",\"args\":{}}";
-	data += ",{\"name\":\"settingsGetAll\",\"ident\":\"settingsGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"subscriptionGetInfo\",\"ident\":\"subscriptionGetInfo\",\"args\":{}}";
-	data += ",{\"name\":\"zeppelinGiftGet\",\"ident\":\"zeppelinGiftGet\",\"args\":{}}";
-	data += ",{\"name\":\"tutorialGetInfo\",\"ident\":\"tutorialGetInfo\",\"args\":{}}";
-	data += ",{\"name\":\"offerGetAll\",\"ident\":\"offerGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"splitGetAll\",\"ident\":\"splitGetAll\",\"args\":{}}";
-	data += ",{\"name\":\"billingGetLast\",\"ident\":\"billingGetLast\",\"args\":{}}";
-	data += ",{\"name\":\"artifactGetChestLevel\",\"ident\":\"artifactGetChestLevel\",\"args\":{}}";
-	data += ",{\"name\":\"titanArtifactGetChest\",\"ident\":\"titanArtifactGetChest\",\"args\":{}}";
-	data += ",{\"name\":\"titanGetSummoningCircle\",\"ident\":\"titanGetSummoningCircle\",\"args\":{}}";
-	data += ",{\"name\":\"newYearGetInfo\",\"ident\":\"newYearGetInfo\",\"args\":{}}";
-	data += ",{\"name\":\"clanWarGetBriefInfo\",\"ident\":\"clanWarGetBriefInfo\",\"args\":{}}";
-	data += ",{\"name\":\"clanWarGetWarlordInfo\",\"ident\":\"clanWarGetWarlordInfo\",\"args\":{}}";
-	data += ",{\"name\":\"chatGetAll\",\"ident\":\"chatGetAll\",\"args\":{\"chatType\":\"clan\"}}";
-	data += ",{\"name\":\"chatGetInfo\",\"ident\":\"chatGetInfo\",\"args\":{}}";
-	data += ",{\"name\":\"clanGetInfo\",\"ident\":\"clanGetInfo\",\"args\":{}}";
-	data += ",{\"name\":\"heroesMerchantGet\",\"ident\":\"heroesMerchantGet\",\"args\":{}}";
-	data += ",{\"name\":\"freebieHaveGroup\",\"ident\":\"freebieHaveGroup\",\"args\":{}}";
-	data += ",{\"name\":\"pirateTreasureIsAvailable\",\"ident\":\"pirateTreasureIsAvailable\",\"args\":{}}";
-	data += ",{\"name\":\"expeditionGet\",\"ident\":\"expeditionGet\",\"args\":{}}";
-	data += ",{\"name\":\"hallOfFameGetTrophies\",\"ident\":\"hallOfFameGetTrophies\",\"args\":{}}";
-	data += ",{\"name\":\"titanArenaGetChestReward\",\"ident\":\"titanArenaGetChestReward\",\"args\":{}}";
-	data += ",{\"name\":\"bossGetAll\",\"ident\":\"bossGetAll\",\"args\":{}}";
-
-	data += "],\"session\":null}";
-	if (sendapi(data))
-	{
-		std::cout << std::to_string(Request_Id) + " - запрос обработался\n";
-		//std::cout << "\n\nОтвет:" << m_html << std::endl;
-
-		// Очищаю массив героев
-		m_datagame->clearHeroes();
-
-		std::stringstream ss(m_html);
-		pt::ptree root;
-		pt::read_json(ss, root);
-		for (pt::ptree::value_type &r : root.get_child("results"))
-		{
-			std::string ident = r.second.get_child("ident").data();
-
-			if (ident == "userGetInfo")
-			{
-				m_datagame->set_player_id(r.second.get_child("result.response.id").data());
-			}
-			else
-			{
-				if (ident == "heroGetAll")
-				{
-					for (pt::ptree::value_type &c : r.second.get_child("result.response"))
-					{
-						Hero h;
-						h.set_id(c.second.get_child("id").data());
-						h.set_xp(c.second.get_child("xp").data());
-						h.set_level(c.second.get_child("level").data());
-						h.set_color(c.second.get_child("color").data());
-						h.set_power(c.second.get_child("power").data());
-						h.set_star(c.second.get_child("star").data());
-						//h.set_skins(c.second.get_child("xp").data());
-						h.set_currentSkin(c.second.get_child("currentSkin").data());
-						h.set_titanGiftLevel(c.second.get_child("titanGiftLevel").data());
-						h.set_scale(c.second.get_child("scale").data());
-
-						m_datagame->set_heroes(&h);
-					}
-				}
-			}
-
-		}
-	}
-	else {
-		std::cout << "Запрос не обработался: " << std::endl;
-		std::cout << "\n\nЗапрос:" << data << std::endl;
-		std::cout << "\n\nОтвет:" << m_html << std::endl;
-	}
+	delete m_datagame;
+	delete m_connect;
 }
 
 void Bot::Loop()
@@ -342,8 +35,6 @@ void Bot::Loop()
 
 	system("cls");
 
-	Connection();
-	
 	std::string data;
 
 	bool paint = true;
@@ -379,18 +70,18 @@ void Bot::Loop()
 					  //Если бесплатный сундук true значит уже собрали
 					  //if (m_configbot.freeChest)
 				data = "{\"session\":null,\"calls\":[{\"name\":\"chestBuy\",\"ident\":\"body\",\"args\":{\"pack\":false,\"chest\":\"town\",\"free\":true}}]}";
-				if (sendapi(data))
+				if (m_connect->Send(data))
 				{
 					lastevent = "Ежедневный бесплатный сундук был собран";
 				}
 				else {
-					if (m_html.find("error") != std::string::npos)
+					if (m_connect->Answer().find("error") != std::string::npos)
 					{
 						lastevent = "Ежедневный бесплатный сундук был собран";
 					} else {
 						std::cout << "Запрос не обработался" << std::endl;
 						std::cout << "\n\nЗапрос:" << data << std::endl;
-						std::cout << "\n\nОтвет:" << m_html << std::endl;
+						std::cout << "\n\nОтвет:" << m_connect->Answer() << std::endl;
 						system("pause");
 					}
 				}
@@ -459,7 +150,7 @@ void Bot::getEnergy()
 				timer = clock();
 				//отправляю запрос на получение информации по квестам
 				std::string data = "{\"calls\":[{\"name\":\"questGetAll\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
-				if (sendapi(data))
+				if (m_connect->Send(data))
 				{
 					struct quest
 					{
@@ -470,7 +161,7 @@ void Bot::getEnergy()
 					};
 					std::vector<quest> quests;
 					//парсю полученный ответ
-					std::stringstream ss(m_html);
+					std::stringstream ss(m_connect->Answer());
 					pt::ptree root;
 					pt::read_json(ss, root);
 					for (pt::ptree::value_type &r : root.get_child("results..result.response"))
@@ -489,7 +180,7 @@ void Bot::getEnergy()
 					for (size_t i = 0; i < quests.size(); ++i)
 					{
 						data = "{\"calls\":[{\"name\":\"questFarm\",\"ident\":\"body\",\"args\":{\"questId\":" + quests[i].id + "}}],\"session\":null}";
-						if (sendapi(data))
+						if (m_connect->Send(data))
 						{
 							text += "собрал награду с задания " + quests[i].id + "\n";
 							draw = true;
@@ -500,52 +191,11 @@ void Bot::getEnergy()
 					//Проверяю если Invalid signature то делаю переподключение
 					std::cout << "Запрос не обработался" << std::endl;
 					std::cout << "\n\nЗапрос:" << data << std::endl;
-					std::cout << "\n\nОтвет:" << m_html << std::endl;
+					std::cout << "\n\nОтвет:" << m_connect->Answer() << std::endl;
 					system("pause");
 					return;
 				}
 			}
-		}
-	}
-}
-
-bool Bot::sendapi(std::string data, int reconnect)
-{
-	m_network->CloseConnection();
-	m_network->OpenConnection("heroes-vk.nextersglobal.com");
-	if (m_network->Post("/api/","https://heroes.cdnvideo.ru/vk/v0393/assets/MiniHeroLoader.swf"))
-	{
-		setHeaderGame(data);
-		m_network->Send(data);
-		m_html = m_network->GetData();
-	} else {
-		return false;
-	}
-	//Проверяю полученный ответ, если есть фигурная скобка значит пришел json ответ, значит все впорядке
-	//Если в ответе пришло слово error то запрос не прошел
-	if ((m_html.find("{") != std::string::npos) && (m_html.find("error") == std::string::npos))
-		return true;
-	else
-	{
-		//Если пришло слова Invalid signature то пытаюсь переподключиться
-		if (m_html == "Invalid signature")
-		{
-			if (reconnect == 0)
-			{
-				return false;
-			}
-			else
-			{
-				// Жду 5 секунд и пытаюсь переподключиться
-				Sleep(5000);
-
-				Connection();
-				return sendapi(data, reconnect - 1);
-			}			
-		}
-		else
-		{
-			return false;
 		}
 	}
 }
@@ -555,13 +205,13 @@ void Bot::tower()
 	bool b_exit = false;
 	//запрашиваю информацию о башне
 	std::string data = "{\"calls\":[{\"name\":\"towerGetInfo\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
-	if (sendapi(data))
+	if (m_connect->Send(data))
 	{
 		std::cout << "Успешно запросили информацию о башне\n";
 	} else {
 		std::cout << "Запрос не обработался" << std::endl;
 		std::cout << "\n\nЗапрос:" << data << std::endl;
-		std::cout << "\n\nОтвет:" << m_html << std::endl;
+		std::cout << "\n\nОтвет:" << m_connect->Answer() << std::endl;
 		system("pause");
 		b_exit = true;
 	}
@@ -571,14 +221,13 @@ void Bot::tower()
 	while (!b_exit)
 	{
 		//Узнаю тип комнаты
-		//std::string floorType = m_network->getVal(m_html, "results..result.response.tower.floorType");
 		std::string floorType;
 		std::string floorNumber;//максимум двузначное число
 		std::string maySkipFloor;//максимум двузначное число
 		floorType.reserve(7);//может быть только 3 значения battle,buff,chest поэтому резервируем по максимальному значению
 		floorNumber.reserve(3);
 		maySkipFloor.reserve(3);
-		std::stringstream ss1(m_html);
+		std::stringstream ss1(m_connect->Answer());
 		pt::ptree root1;
 		pt::read_json(ss1, root1);
 		for (pt::ptree::value_type &r : root1.get_child("results..result.response"))
@@ -604,16 +253,6 @@ void Bot::tower()
 				if (r.first == "maySkipFloor") maySkipFloor = r.second.data();
 			}
 		}
-		//Текущий этаж
-		/*std::string tmp = m_network->getParam(m_html, "\"floorNumber\"", ":", ",");
-		std::string::iterator it = std::remove(tmp.begin(), tmp.end(), '\"');
-		tmp.erase(it, tmp.end());
-		std::string floorNumber = tmp;*/
-		//std::string floorNumber = m_network->getVal(m_html, "results..result.response.floorNumber");
-
-		//Получаю информацию сколько этажей я могу скипнуть
-		//std::string maySkipFloor = m_network->getVal(m_html, "results..result.response.maySkipFloor");
-
 		//Запрос на переход в следующую комнату
 		std::string nextFloor = "{\"calls\":[{\"name\":\"towerNextFloor\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
 
@@ -624,14 +263,14 @@ void Bot::tower()
 			{
 				//Запрос на скип боя
 				data = "{\"calls\":[{\"name\":\"towerSkipFloor\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
-				if (sendapi(data))
+				if (m_connect->Send(data))
 				{
 					lastevent = "Скипнули бой на " + floorNumber + " этаже";
 				}
 				else {
 					std::cout << "Запрос не обработался" << std::endl;
 					std::cout << "\n\nЗапрос:" << data << std::endl;
-					std::cout << "\n\nОтвет:" << m_html << std::endl;
+					std::cout << "\n\nОтвет:" << m_connect->Answer() << std::endl;
 					system("pause");
 					b_exit = true;
 				}
@@ -650,8 +289,6 @@ void Bot::tower()
 				std::cout << "\n\nОтвет:\n" << m_html << std::endl;
 				system("pause");
 				}*/
-				//Считываем seed
-				//std::string seed = m_network->getParam(m_html, "\"seed\"", ":", ",");
 
 				//Сделаю паузу в 5 сек
 				//Sleep(5000);
@@ -723,7 +360,7 @@ void Bot::tower()
 			arrbuff.insert(std::pair<int, buff>(21, { "Воскрешение (40)", 40 }));
 
 			std::vector<std::string> v;
-			std::stringstream ss(m_html);
+			std::stringstream ss(m_connect->Answer());
 			pt::ptree root;
 			pt::read_json(ss, root);
 			for (pt::ptree::value_type &row : root.get_child("results..result.response"))
@@ -771,12 +408,10 @@ void Bot::tower()
 
 			//Запрос количества доступных черепов
 			data = "{\"calls\":[{\"name\":\"inventoryGet\",\"ident\":\"inventoryGet\",\"args\":{}}],\"session\":null}";
-			if (sendapi(data))
+			if (m_connect->Send(data))
 			{
 				//Успешно получил инфу по инвентарю
-				/*std::string s_coin = m_network->getParam(m_html, "\"coin\"", "{", "}");
-				unsigned int coinSkull = std::stoi(m_network->getParam(s_coin, "\"7\"", ":", "}"));*/
-				unsigned int coinSkull = std::stoi(m_network->getVal(m_html, "results..result.response.coin.7", "0"));//7 - это ид валюты черепов
+				unsigned int coinSkull = std::stoi(HttpReader::getVal(m_connect->Answer(), "results..result.response.coin.7", "0"));//7 - это ид валюты черепов
 				//Пока что сделаю меню с выбором бафов
 				bool b_exit1 = false;
 				char sim = 0;
@@ -792,7 +427,7 @@ void Bot::tower()
 					{
 						//покупаю этот баф
 						data = "{\"calls\":[{\"name\":\"towerBuyBuff\",\"ident\":\"body\",\"args\":{\"buffId\":" + v[i] + "}}],\"session\":null}";
-						if (sendapi(data))
+						if (m_connect->Send(data))
 						{
 							std::cout << "Купил баф " << arrbuff[num].name << std::endl;
 							//отнимаем от доступных черепов количество потраченных черепов
@@ -801,7 +436,7 @@ void Bot::tower()
 						else {
 							std::cout << "Запрос не обработался" << std::endl;
 							std::cout << "\n\nЗапрос:" << data << std::endl;
-							std::cout << "\n\nОтвет:" << m_html << std::endl;
+							std::cout << "\n\nОтвет:" << m_connect->Answer() << std::endl;
 							system("pause");
 							b_exit1 = true;
 							b_exit = true;
@@ -827,7 +462,7 @@ void Bot::tower()
 						{
 							//покупаю этот баф
 							data = "{\"calls\":[{\"name\":\"towerBuyBuff\",\"ident\":\"body\",\"args\":{\"buffId\":" + v[i] + "}}],\"session\":null}";
-							if (sendapi(data))
+							if (m_connect->Send(data))
 							{
 								std::cout << "Купил баф " << arrbuff[num].name << std::endl;
 								//отнимаем от доступных черепов количество потраченных черепов
@@ -836,7 +471,7 @@ void Bot::tower()
 							else {
 								std::cout << "Запрос не обработался" << std::endl;
 								std::cout << "\n\nЗапрос:" << data << std::endl;
-								std::cout << "\n\nОтвет:" << m_html << std::endl;
+								std::cout << "\n\nОтвет:" << m_connect->Answer() << std::endl;
 								system("pause");
 								b_exit1 = true;
 								b_exit = true;
@@ -847,7 +482,7 @@ void Bot::tower()
 				//если все прошло нормально, то делаю переход на следующий этаж
 				if (!b_exit)
 				{
-					if (sendapi(nextFloor))
+					if (m_connect->Send(nextFloor))
 					{
 						lastevent = "Перешли на этаж " + std::to_string(std::stoi(floorNumber) + 1);
 					}
@@ -855,7 +490,7 @@ void Bot::tower()
 					{
 						std::cout << "Запрос не обработался" << std::endl;
 						std::cout << "\n\nЗапрос:" << data << std::endl;
-						std::cout << "\n\nОтвет:" << m_html << std::endl;
+						std::cout << "\n\nОтвет:" << m_connect->Answer() << std::endl;
 						system("pause");
 						b_exit1 = true;
 						b_exit = true;
@@ -934,7 +569,7 @@ void Bot::tower()
 			else {
 				std::cout << "Запрос не обработался" << std::endl;
 				std::cout << "\n\nЗапрос:" << data << std::endl;
-				std::cout << "\n\nОтвет:" << m_html << std::endl;
+				std::cout << "\n\nОтвет:" << m_connect->Answer() << std::endl;
 				system("pause");
 				b_exit = true;
 			}
@@ -943,18 +578,18 @@ void Bot::tower()
 		{
 			//Запрос открытия сундука
 			data = "{\"calls\":[{\"name\":\"towerOpenChest\",\"ident\":\"body\",\"args\":{\"num\":" + std::to_string(rand() % 3) + "}}],\"session\":null}";
-			if (sendapi(data))
+			if (m_connect->Send(data))
 			{
 				lastevent = "Собрал сундук на этаже " + floorNumber;
 				//собрали сундук и переходим в следующую комнату
-				if (sendapi(nextFloor))
+				if (m_connect->Send(nextFloor))
 				{
 					lastevent += "\nПерешли на этаж " + std::to_string(std::stoi(floorNumber) + 1);
 				}
 				else {
 					std::cout << "Запрос не обработался" << std::endl;
 					std::cout << "\n\nЗапрос:" << data << std::endl;
-					std::cout << "\n\nОтвет:" << m_html << std::endl;
+					std::cout << "\n\nОтвет:" << m_connect->Answer() << std::endl;
 					system("pause");
 					b_exit = true;
 				}
@@ -962,7 +597,7 @@ void Bot::tower()
 			else {
 				std::cout << "Запрос не обработался" << std::endl;
 				std::cout << "\n\nЗапрос:" << data << std::endl;
-				std::cout << "\n\nОтвет:" << m_html << std::endl;
+				std::cout << "\n\nОтвет:" << m_connect->Answer() << std::endl;
 				system("pause");
 				b_exit = true;
 			}
@@ -974,34 +609,34 @@ void Bot::dungeon()
 {
 	//запрашиваю информацию о подземелье
 	std::string data = "{\"calls\":[{\"name\":\"dungeonGetInfo\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
-	if (sendapi(data))
+	if (m_connect->Send(data))
 	{
 		std::cout << "Успешно запросили информацию о подземелье\n";
 	} else {
 		std::cout << "Запрос не обработался" << std::endl;
 		std::cout << "\n\nЗапрос:\n" << data << std::endl;
-		std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+		std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 		system("pause");
 	}
 
 	//Узнаю тип кем надо нападать
-	std::string attackerType = m_network->getParam(m_html, "\"attackerType\"", "\"", "\"");
+	std::string attackerType = HttpReader::getParam(m_connect->Answer(), "\"attackerType\"", "\"", "\"");
 
 	if (attackerType == "hero")
 	{
 		//если бой героями
 		data = "{\"session\":null,\"calls\":[{\"name\":\"dungeonStartBattle\",\"ident\":\"body\",\"args\":{\"heroes\":[13,5,12,25,2],\"teamNum\":0}}]}";
-		if (sendapi(data))
+		if (m_connect->Send(data))
 		{
 			std::cout << "Начал битву\n";
 		} else {
 			std::cout << "Запрос не обработался" << std::endl;
 			std::cout << "\n\nЗапрос:\n" << data << std::endl;
-			std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+			std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 			system("pause");
 		}
 		//Считываем seed
-		std::string seed = m_network->getParam(m_html, "\"seed\"", ":", ",");
+		std::string seed = HttpReader::getParam(m_connect->Answer(), "\"seed\"", ":", ",");
 
 		Sleep(5000);
 
@@ -1023,13 +658,13 @@ void Bot::dungeon()
 		data += "},\"type\":\".client.window.open\"},{\"params\":{\"windowName\":\"game.view.popup.battle::BattlePreloaderPopup\",";
 		data += "\"timestamp\":" + l2;
 		data += "},\"type\":\".client.window.close\"}]}}]}";
-		if (sendapi(data))
+		if (m_connect->Send(data))
 		{
 			std::cout << "Отправил события\n";
 		} else {
 			std::cout << "Запрос не обработался" << std::endl;
 			std::cout << "\n\nЗапрос:\n" << data << std::endl;
-			std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+			std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 			system("pause");
 		}
 
@@ -1037,13 +672,13 @@ void Bot::dungeon()
 
 
 		data = "{\"session\":null,\"calls\":[{\"name\":\"dungeonEndBattle\",\"ident\":\"body\",\"args\":{\"progress\":[{\"defenders\":{\"heroes\":{},\"input\":[]},\"v\":139,\"attackers\":{\"heroes\":{\"25\":{\"energy\":1000,\"isDead\":false,\"hp\":149630},\"2\":{\"energy\":203,\"isDead\":false,\"hp\":232649},\"12\":{\"energy\":200,\"isDead\":false,\"hp\":41745},\"13\":{\"energy\":100,\"isDead\":false,\"hp\":79010},\"5\":{\"energy\":500,\"isDead\":false,\"hp\":70830}},\"input\":[\"auto\",0,0,\"auto\",0,0]},\"b\":0,\"seed\":" + seed + "}],\"result\":{\"win\":true,\"stars\":3}}}]}";
-		if (sendapi(data))
+		if (m_connect->Send(data))
 		{
 			std::cout << "Окончил битву\n";
 		} else {
 			std::cout << "Запрос не обработался" << std::endl;
 			std::cout << "\n\nЗапрос:\n" << data << std::endl;
-			std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+			std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 			system("pause");
 		}
 	} else if (attackerType == "fire") {
@@ -1059,7 +694,7 @@ void Bot::dungeon()
 			std::cout << "\n\nОтвет:\n" << m_html << std::endl;
 		}*/
 		//Считываем seed
-		std::string seed = m_network->getParam(m_html, "\"seed\"", ":", ",");
+		std::string seed = HttpReader::getParam(m_connect->Answer(), "\"seed\"", ":", ",");
 
 		Sleep(60000);
 
@@ -1071,7 +706,7 @@ void Bot::chestboss()
 {
 	//Запрос получения информации о боссах
 	std::string data = "{\"calls\":[{\"name\":\"bossGetAll\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
-	if (sendapi(data))
+	if (m_connect->Send(data))
 	{
 		std::cout << "Получили информацию о боссах" << std::endl;
 		//всего 3 босса, но навсякий случай делаем анализ и создаем массив на каждого босса с его информацией
@@ -1091,7 +726,7 @@ void Bot::chestboss()
 		};
 		std::vector<boss> arrboss;
 		//Блок с информацией о боссах
-		std::stringstream ss(m_html);
+		std::stringstream ss(m_connect->Answer());
 		pt::ptree root;
 		pt::read_json(ss, root);
 		for (pt::ptree::value_type &row : root.get_child("results..result.response"))
@@ -1134,13 +769,13 @@ void Bot::chestboss()
 		}
 		data += ",{\"name\":\"bossGetAll\",\"ident\":\"bossGetAll\",\"args\":{}}],\"session\":null}";
 
-		if (sendapi(data))
+		if (m_connect->Send(data))
 		{
 			//отправил запрос на активацию боссов
 			//теперь отправляю запрос на открытие сундуков
 			//Собираю запрос 
 			data = "{\"calls\":[" + openChest + "],\"session\":null}";
-			if (sendapi(data))
+			if (m_connect->Send(data))
 			{
 				//Отправил запрос на открытие бесплатных сундуков
 				lastevent = "Открыл бесплатные сундуки боссов";
@@ -1149,7 +784,7 @@ void Bot::chestboss()
 			{
 				std::cout << "Запрос не обработался" << std::endl;
 				std::cout << "\n\nЗапрос:\n" << data << std::endl;
-				std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+				std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 				system("pause");
 			}
 		}
@@ -1157,7 +792,7 @@ void Bot::chestboss()
 		{
 			std::cout << "Запрос не обработался" << std::endl;
 			std::cout << "\n\nЗапрос:\n" << data << std::endl;
-			std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+			std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 			system("pause");
 		}
 	}
@@ -1165,7 +800,7 @@ void Bot::chestboss()
 	{
 		std::cout << "Запрос не обработался" << std::endl;
 		std::cout << "\n\nЗапрос:\n" << data << std::endl;
-		std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+		std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 		system("pause");
 	}
 }
@@ -1177,18 +812,18 @@ void Bot::zeppelin()
 	//проверяю доступен ли ежедневный ключ
 	std::string data = "{\"calls\":[{\"name\":\"zeppelinGiftGet\",\"ident\":\"zeppelinGiftGet\",\"args\":{}}],\"session\":null}";
 	//Отправил запрос проверки доступности бесплатного ключа
-	if (!sendapi(data))
+	if (!m_connect->Send(data))
 	{
 		std::cout << "Запрос не обработался" << std::endl;
 		std::cout << "\n\nЗапрос:\n" << data << std::endl;
-		std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+		std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 		system("pause");
 	}
 	//Если доступен ежедневный ключ то отправляю запрос на сбор его
-	if (m_network->getParam(m_html, "\"available\"", ":", ",") == "true")
+	if (HttpReader::getParam(m_connect->Answer(), "\"available\"", ":", ",") == "true")
 	{
 		data = "{\"calls\":[{\"name\":\"zeppelinGiftFarm\",\"ident\":\"zeppelinGiftFarm\",\"args\":{}}],\"session\":null}";
-		if (sendapi(data))
+		if (m_connect->Send(data))
 		{
 			lastevent = "Забрал ежедневный ключ";
 		}
@@ -1196,7 +831,7 @@ void Bot::zeppelin()
 		{
 			std::cout << "Запрос не обработался" << std::endl;
 			std::cout << "\n\nЗапрос:\n" << data << std::endl;
-			std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+			std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 			system("pause");
 		}
 	}
@@ -1207,7 +842,7 @@ void Bot::zeppelin()
 
 	//Запрашиваю информацию о экспедициях
 	data = "{\"calls\":[{\"name\":\"expeditionGet\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
-	if (sendapi(data))
+	if (m_connect->Send(data))
 	{
 		//структура экспедиции
 		struct expedition
@@ -1226,7 +861,7 @@ void Bot::zeppelin()
 		};
 		std::vector<expedition> expeditions;
 		//Блок с информацией о экспедициях
-		std::stringstream ss(m_html);
+		std::stringstream ss(m_connect->Answer());
 		pt::ptree root;
 		pt::read_json(ss, root);
 		for (pt::ptree::value_type &row : root.get_child("results..result.response"))
@@ -1262,7 +897,7 @@ void Bot::zeppelin()
 			if ((expeditions[i].status == 2) && (expeditions[i].endTime <= unix_epoch))
 			{
 				data = "{\"calls\":[{\"name\":\"expeditionFarm\",\"ident\":\"body\",\"args\":{\"expeditionId\":" + std::to_string(expeditions[i].id) + "}}],\"session\":null}";
-				if (sendapi(data))
+				if (m_connect->Send(data))
 				{
 					lastevent += "\nСобрал добычу с экспедиции " + std::to_string(expeditions[i].id);
 					expeditions[i].status = 3;
@@ -1273,7 +908,7 @@ void Bot::zeppelin()
 				{
 					std::cout << "Запрос не обработался" << std::endl;
 					std::cout << "\n\nЗапрос:\n" << data << std::endl;
-					std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+					std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 					system("pause");
 				}
 			}
@@ -1282,10 +917,10 @@ void Bot::zeppelin()
 		expeditions.clear();
 		//Запрашиваю информацию о экспедициях еще раз.
 		data = "{\"calls\":[{\"name\":\"expeditionGet\",\"ident\":\"body\",\"args\":{}}],\"session\":null}";
-		if (sendapi(data))
+		if (m_connect->Send(data))
 		{
 			//Блок с информацией о экспедициях
-			std::stringstream ss(m_html);
+			std::stringstream ss(m_connect->Answer());
 			pt::ptree root;
 			pt::read_json(ss, root);
 			for (pt::ptree::value_type &row : root.get_child("results..result.response"))
@@ -1371,7 +1006,7 @@ void Bot::zeppelin()
 				data += "{\"name\":\"expeditionSendHeroes\",\"ident\":\"body\",\"args\":{\"expeditionId\":" + std::to_string(expeditions[i].id) + ",\"heroes\":[" + sendHeroes + "]}}";
 				data += "],\"session\":null}";
 
-				if (sendapi(data))
+				if (m_connect->Send(data))
 				{
 					lastevent += "\nОтправил экспедицию";
 					//если экспедиция отправилась, то я убираю из списка доступных героев, отправленные герои
@@ -1395,7 +1030,7 @@ void Bot::zeppelin()
 				{
 					std::cout << "Запрос не обработался" << std::endl;
 					std::cout << "\n\nЗапрос:\n" << data << std::endl;
-					std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+					std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 					std::copy(minPowerTeam.begin(), minPowerTeam.end(), std::ostream_iterator<int>(std::cout, " "));
 					system("pause");
 					//если ошибка то выходим из функции
@@ -1408,7 +1043,7 @@ void Bot::zeppelin()
 	{
 		std::cout << "Запрос не обработался" << std::endl;
 		std::cout << "\n\nЗапрос:\n" << data << std::endl;
-		std::cout << "\n\nОтвет:\n" << m_html << std::endl;
+		std::cout << "\n\nОтвет:\n" << m_connect->Answer() << std::endl;
 		system("pause");
 	}
 }

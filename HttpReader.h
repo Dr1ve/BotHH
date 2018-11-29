@@ -1,12 +1,14 @@
 #ifndef HTTPREADER_H
 #define HTTPREADER_H
 
-#include "includes.h"
+#include <Windows.h>
+#include <WinInet.h>
+#include <iostream>
 
 class HttpReader
 {
 public:
-	HttpReader(std::string ServerName = NULL, bool bUseSSL = false);
+	HttpReader(const std::string &ServerName = NULL, bool bUseSSL = false);
 	~HttpReader();
 
 	bool OpenInternet(std::string Agent = TEXT("Mozilla / 5.0 (Windows NT 6.1; WOW64; Trident / 7.0; rv:11.0) like Gecko"));
@@ -21,8 +23,8 @@ public:
 
 	std::string GetData();
 
-	static std::string getParam(std::string html, std::string name, std::string leftsymbol, std::string rightsymbol);
-	static std::string getVal(std::string json, std::string path, std::string def = "");
+	static std::string getParam(const std::string &html, const std::string &name, const std::string &leftsymbol, std::string rightsymbol);
+	static std::string getVal(const std::string &json, const std::string &path, const std::string &def = "");
 
 	bool AddRequestHeader(std::string header);
 
